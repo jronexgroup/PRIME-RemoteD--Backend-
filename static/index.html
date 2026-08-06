@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRIME REMOTE D</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #fff; height: 100vh; overflow: hidden; }
+
+        .container { display: flex; flex-direction: column; height: 100vh; }
+
+        .header { padding: 8px 12px; background: #1a1a1a; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 14px; color: #00d4ff; }
+        .status { font-size: 11px; color: #666; }
+        .status.connected { color: #00ff88; }
+
+        .screen-container { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; }
+        #screen { max-width: 100%; max-height: 100%; object-fit: contain; cursor: crosshair; }
+
+        .controls { padding: 8px; background: #1a1a1a; border-top: 1px solid #333; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+        .btn { padding: 6px 10px; border: 1px solid #333; border-radius: 6px; background: #222; color: #fff; font-size: 11px; cursor: pointer; }
+        .btn:hover { background: #333; }
+        .btn:active { background: #00d4ff; color: #000; }
+        .btn.danger { border-color: #ff4444; color: #ff4444; }
+        .btn.success { border-color: #00ff88; color: #00ff88; }
+
+        .bottom-nav { display: flex; background: #1a1a1a; border-top: 1px solid #333; }
+        .nav-item { flex: 1; padding: 8px; text-align: center; font-size: 10px; color: #666; cursor: pointer; }
+        .nav-item.active { color: #00d4ff; }
+
+        .overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 100; padding: 20px; flex-direction: column; }
+        .overlay.active { display: flex; }
+        .overlay input, .overlay textarea { width: 100%; padding: 10px; border: 1px solid #333; border-radius: 6px; background: #222; color: #fff; font-size: 14px; margin-bottom: 10px; }
+        .overlay .btn { width: 100%; padding: 12px; }
+
+        .coords-display { position: fixed; bottom: 80px; left: 10px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; font-size: 10px; color: #00d4ff; display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>PRIME REMOTE D</h1>
+            <span id="status" class="status">Connecting...</span>
+        </div>
+
+        <div class="screen-container">
+            <img id="screen" src="" alt="Screen" onclick="handleScreenClick(event)">
+        </div>
+
+        <div class="controls" id="quickControls">
+            <button class="btn" onclick="sendCommand('screenshot')">📸</button>
+            <button class="btn success" onclick="sendCommand('volume_up')">🔊+</button>
+            <button class="btn success" onclick="sendCommand('volume_down')">🔉-</button>
+            <button class="btn danger" onclick="sendCommand('power_lock')">🔒</button>
+            <button class="btn" onclick="showOverlay('terminal')">💻</button>
+            <button class="btn" onclick="showOverlay('keyboard')">⌨️</button>
+            <button class="btn" onclick="sendCommand('clipboard_get')">📋</button>
+            <button class="btn" onclick="toggleRefresh()">🔄</button>
+        </div>
+
+        <div class="bottom-nav">
+            <div class="nav-item active" onclick="switchTab('screen')">Screen</div>
+            <div class="nav-item" onclick="switchTab('keyboard')">Keyboard</div>
+            <div class="nav-item" onclick="switchTab('mouse')">Mouse</div>
+            <div class="nav-item" onclick="switchTab('files')">Files</div>
+        </div>
+    </div>
+
+    <div id="coordsDisplay" class="coords-display"></div>
+
+    <div id="terminalOverlay" class="overlay">
+        <h3 style="margin-bottom: 10px;">Terminal</h3>
+        <textarea id="termOutput" rows="10" readonly placeholder="Output..."></textarea>
+        <input id="termInput" placeholder="Enter command..." onkeypress="if(event.key==='Enter')sendTerminal()">
+        <button class="btn" onclick="sendTerminal()">Run</button>
+        <button class="btn" onclick="hideOverlay('terminal')" style="margin-top: 5px;">Close</button>
+    </div>
+
+    <div id="keyboardOverlay" class="overlay">
+        <h3 style="margin-bottom: 10px;">Keyboard</h3>
+        <input id="keyInput" placeholder="Enter key (e.g. ctrl+c, enter, alt+tab)">
+        <button class="btn" onclick="sendKey()">Send Key</button>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-top: 10px;">
+            <button class="btn" onclick="sendKeyPress('enter')">Enter</button>
+            <button class="btn" onclick="sendKeyPress('tab')">Tab</button>
+            <button class="btn" onclick="sendKeyPress('esc')">Esc</button>
+            <button class="btn" onclick="sendKeyPress('space')">Space</button>
+            <button class="btn" onclick="sendKeyPress('up')">↑</button>
+            <button class="btn" onclick="sendKeyPress('down')">↓</button>
+            <button class="btn" onclick="sendKeyPress('left')">←</button>
+            <button class="btn" onclick="sendKeyPress('right')">→</button>
+            <button class="btn" onclick="sendKeyPress('ctrl+c')">Ctrl+C</button>
+            <button class="btn" onclick="sendKeyPress('ctrl+v')">Ctrl+V</button>
+            <button class="btn" onclick="sendKeyPress('alt+tab')">Alt+Tab</button>
+            <button class="btn" onclick="sendKeyPress('alt+f4')">Alt+F4</button>
+        </div>
+        <button class="btn" onclick="hideOverlay('keyboard')" style="margin-top: 10px;">Close</button>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin;
+        let refreshInterval = null;
+        let deviceId = 'home-pc';
+        let apiKey = '';
+
+        function updateScreen() {
+            const img = document.getElementById('screen');
+            img.src = API_URL + '/screen?t=' + Date.now();
+        }
+
+        function toggleRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+                document.getElementById('status').textContent = 'Paused';
+            } else {
+                refreshInterval = setInterval(updateScreen, 1000);
+                document.getElementById('status').textContent = 'Live';
+            }
+        }
+
+        function handleScreenClick(event) {
+            const img = event.target;
+            const rect = img.getBoundingClientRect();
+            const x = Math.round((event.clientX - rect.left) * (1920 / rect.width));
+            const y = Math.round((event.clientY - rect.top) * (1080 / rect.height));
+
+            const display = document.getElementById('coordsDisplay');
+            display.textContent = `Click: (${x}, ${y})`;
+            display.style.display = 'block';
+            setTimeout(() => display.style.display = 'none', 2000);
+
+            fetch(API_URL + '/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    device_id: deviceId,
+                    type: 'mouse_click',
+                    args: { x: x, y: y }
+                })
+            });
+        }
+
+        function sendCommand(type, args = {}) {
+            fetch(API_URL + '/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_id: deviceId, type: type, args: args })
+            });
+        }
+
+        function sendTerminal() {
+            const input = document.getElementById('termInput');
+            const cmd = input.value.trim();
+            if (!cmd) return;
+
+            sendCommand('terminal', { command: cmd });
+            document.getElementById('termOutput').value += '$ ' + cmd + '\n';
+            input.value = '';
+        }
+
+        function sendKey() {
+            const key = document.getElementById('keyInput').value.trim();
+            if (key) sendCommand('keyboard', { key: key });
+        }
+
+        function sendKeyPress(key) {
+            sendCommand('keyboard', { key: key });
+        }
+
+        function showOverlay(name) {
+            document.getElementById(name + 'Overlay').classList.add('active');
+        }
+
+        function hideOverlay(name) {
+            document.getElementById(name + 'Overlay').classList.remove('active');
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (tab === 'keyboard') showOverlay('keyboard');
+            else if (tab === 'mouse') sendCommand('screenshot');
+            else if (tab === 'files') sendCommand('list_dir', { path: 'C:\\' });
+        }
+
+        // Auto-connect
+        fetch(API_URL + '/health')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('status').classList.add('connected');
+                toggleRefresh();
+            })
+            .catch(() => {
+                document.getElementById('status').textContent = 'Offline';
+            });
+    </script>
+</body>
+</html>
